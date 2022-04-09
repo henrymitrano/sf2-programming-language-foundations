@@ -1834,28 +1834,29 @@ Definition p5 : com :=
 Definition p6 : com :=
   <{ X := 1 }>.
 
-Theorem p5_p6_equiv : cequiv p5 p6.
+Lemma p5_may_diverge : forall st st', st X <> 1 ->
+  ~ st =[ p5 ]=> st'.
 Proof.
-  remember p5 as c5. remember p6 as c6.
-  unfold cequiv, p5, p6 in *.
-  split; intros.
-  - induction H as []; inversion Heqc5; subst.
-    + simpl in H. apply negb_false_iff, eqb_eq in H.
-      assert (st =[ X := 1 ]=> (X !-> 1; st)). apply E_Asgn. reflexivity.
-      destruct H. rewrite t_update_same in H0. assumption.
-    + simpl in H. apply negb_true_iff, eqb_neq in H.
-      inversion H0; subst. intuition.
-      inversion H2; subst. simpl.
-      rewrite t_update_shadow. constructor. reflexivity.
-  - assert (st X <> 1 -> ~ st =[ c5 ]=> st').
-    intros. intro. induction H1; subst; try discriminate.
-    + inversion H; subst. destruct H0. inversion H5. auto.
-    + inversion Heqc5; inversion H; inversion H1_; subst; simpl; try discriminate. 
-      apply IHceval2; subst; auto.
-      simpl. replace (X !-> 1; st) with (X !-> 1; X !-> 0; st).
-      * constructor. auto.
-      * apply t_update_shadow.
-    + subst.
+  intros. remember p5 as c5. unfold p5 in *. intro. 
+  induction H0; subst; try discriminate.
+  + inversion Heqc5; subst. simpl in H0. apply negb_false_iff, eqb_eq in H0. contradiction.
+  + inversion Heqc5; inversion H0_; inversion H0_0; subst; simpl; try discriminate. 
+    apply IHceval2; subst; auto.
+Qed.
+
+(* Alas, the question is false. Behold, a counter-example *)
+Theorem p5_p6_nequiv : ~ cequiv p5 p6.
+Proof.
+  unfold cequiv. intro.
+  specialize H with (X !-> 42) (X !-> 1; X !-> 42).
+  destruct H.
+  assert ((X !-> 42) =[ X := 1 ]=> (X !-> 1; X !-> 42) ).
+  { constructor. reflexivity. }
+  intuition.
+  assert (~ (X !-> 42) =[ p5 ]=> (X !-> 1; X !-> 42)).
+  apply p5_may_diverge. intro. discriminate.
+  contradiction.
+Qed.
 
 (** [] *)
 
@@ -1898,7 +1899,28 @@ Theorem swap_noninterfering_assignments: forall l1 l2 a1 a2,
     <{ l1 := a1; l2 := a2 }>
     <{ l2 := a2; l1 := a1 }>.
 Proof.
-(* FILL IN HERE *) Admitted.
+  assert (forall l1 l2 a1 a2 st st',
+    l1 <> l2 ->
+    var_not_used_in_aexp l1 a2 ->
+    var_not_used_in_aexp l2 a1 ->
+    st =[ l1 := a1; l2 := a2 ]=> st' ->
+    st =[ l2 := a2; l1 := a1 ]=> st'
+  ). {
+    intros.
+    inversion H2; inversion H5; inversion H8; subst. simpl in *.
+    assert (weak: aeval (l1 !-> aeval st a1; st) a2 = aeval st a2).
+    { rewrite aeval_weakening; auto. }
+    rewrite weak in *. rewrite t_update_permute; try assumption. 
+    apply E_Seq with (l2 !-> aeval st a2; st); constructor.
+    - reflexivity.
+    - apply aeval_weakening. assumption.
+  }
+  
+  intros. split.
+  - apply H; assumption.
+  - apply H; try assumption.
+    intro. symmetry in H3. contradiction.
+Qed.
 
 (** [] *)
 
@@ -1928,31 +1950,50 @@ Definition capprox (c1 c2 : com) : Prop := forall (st st' : state),
 (** Find two programs [c3] and [c4] such that neither approximates
     the other. *)
 
-Definition c3 : com
-  (* REPLACE THIS LINE WITH ":= _your_definition_ ." *). Admitted.
-Definition c4 : com
-  (* REPLACE THIS LINE WITH ":= _your_definition_ ." *). Admitted.
+Definition c3 : com := <{ X := 1 }>.
+Definition c4 : com := <{ X := 2 }>.
 
 Theorem c3_c4_different : ~ capprox c3 c4 /\ ~ capprox c4 c3.
-Proof. (* FILL IN HERE *) Admitted.
+Proof. 
+  unfold capprox, c3, c4. split; intro.
+  - specialize H with empty_st (X !-> 1).
+    assert (empty_st =[ X := 1 ]=> (X !-> 1)).
+    constructor. reflexivity. intuition.
+    inversion H1; subst. simpl in *.
+    assert ((X !-> 2) X = 1). 
+    + rewrite H5. reflexivity.
+    + inversion H.
+  - specialize H with empty_st (X !-> 2).
+    assert (empty_st =[ X := 2 ]=> (X !-> 2)).
+    constructor. reflexivity. intuition.
+    inversion H1; subst. simpl in *.
+    assert ((X !-> 1) X = 2).
+    + rewrite H5. reflexivity.
+    + inversion H.
+Qed.
 
 (** Find a program [cmin] that approximates every other program. *)
 
-Definition cmin : com
-  (* REPLACE THIS LINE WITH ":= _your_definition_ ." *). Admitted.
+Definition cmin : com :=
+  <{ while true do skip end }>.
 
 Theorem cmin_minimal : forall c, capprox cmin c.
-Proof. (* FILL IN HERE *) Admitted.
+Proof.
+  unfold capprox, cmin. intros.
+  apply while_true_nonterm in H.
+  - inversion H.
+  - apply refl_bequiv.
+Qed.
 
 (** Finally, find a non-trivial property which is preserved by
     program approximation (when going from left to right). *)
 
-Definition zprop (c : com) : Prop
-  (* REPLACE THIS LINE WITH ":= _your_definition_ ." *). Admitted.
+(* This is kind of trivial, skip is cmax *)
+Definition zprop (c : com) : Prop := cequiv c <{ skip }>. 
 
 Theorem zprop_preserving : forall c c',
   zprop c -> capprox c c' -> zprop c'.
-Proof. (* FILL IN HERE *) Admitted.
+Proof. intros. lia. Admitted.
 (** [] *)
 
 (* 2021-08-11 15:11 *)
