@@ -2250,7 +2250,10 @@ Lemma fib_eqn : forall n,
   n > 0 ->
   fib n + fib (pred n) = fib (1 + n).
 Proof.
-  (* FILL IN HERE *) Admitted.
+  intros. destruct n.
+  - inversion H.
+  - reflexivity.
+Qed.
 (** [] *)
 
 (** **** Exercise: 4 stars, advanced, optional (fib)
@@ -2279,12 +2282,39 @@ Proof.
 
 Definition T : string := "T".
 
-Definition dfib (n : nat) : decorated
-(* REPLACE THIS LINE WITH ":= _your_definition_ ." *). Admitted.
+Definition dfib (n : nat) : decorated :=
+  <{  {{ True }} ->>
+      {{ 1 = ap fib (1 - 1) /\ 1 = ap fib 1 /\ 1 > 0 }}
+    X := 1
+      {{ 1 = ap fib (X - 1) /\ 1 = ap fib X /\ X > 0 }} ;
+    Y := 1
+      {{ Y = ap fib (X - 1) /\ 1 = ap fib X /\ X > 0 }} ;
+    Z := 1
+      {{ Y = ap fib (X - 1) /\ Z = ap fib X /\ X > 0 }} ;
+      while ~(X = 1 + n) do
+        {{ Y = ap fib (X - 1) /\ Z = ap fib X /\ X > 0 /\ X <> 1 + n }} ->>
+        {{ Z = ap fib (1 + X - 1) /\ Z + Y = ap fib (1 + X) /\ (1 + X) > 0 }}
+      T := Z
+        {{ T = ap fib (1 + X - 1) /\ Z + Y = ap fib (1 + X) /\ (1 + X) > 0 }} ;
+      Z := Z + Y
+        {{ T = ap fib (1 + X - 1) /\ Z = ap fib (1 + X) /\ (1 + X) > 0 }} ;
+      Y := T
+        {{ Y = ap fib (1 + X - 1) /\ Z = ap fib (1 + X) /\ (1 + X) > 0 }} ; 
+      X := 1 + X
+        {{ Y = ap fib (X - 1) /\ Z = ap fib X /\ X > 0 }}
+      end
+      {{ Y = ap fib (X - 1) /\ Z = ap fib X /\ X > 0 /\ ~ (X <> 1 + n) }} ->>
+      {{ Y = fib n }} }>.
 
 Theorem dfib_correct : forall n,
   dec_correct (dfib n).
-(* FILL IN HERE *) Admitted.
+Proof.
+  verify.
+  - rewrite sub_0_r. reflexivity.
+  - rewrite <- pred_of_minus. apply fib_eqn. assumption.
+  - apply eq_dne in H2. rewrite H2.
+    simpl. rewrite sub_0_r. reflexivity.
+Qed.
 (** [] *)
 
 (** **** Exercise: 5 stars, advanced, optional (improve_dcom)
@@ -2298,8 +2328,209 @@ Theorem dfib_correct : forall n,
     rest of the formal development leading up to the [verification_correct]
     theorem. *)
 
-(* FILL IN HERE
+Inductive dcom' : Type :=
+| DC'Skip (Q : Assertion)
+  (* skip {{ Q }} *)
+| DC'Seq (d1 d2 : dcom')
+  (* d1 ; d2 *)
+| DC'Asgn (X : string) (a : aexp) (Q : Assertion)
+  (* X := a {{ Q }} *)
+| DC'If (b : bexp) (d1 : dcom') (d2 : dcom') (Q : Assertion)
+  (* if b then d1 else d2 end {{ Q }} *)
+| DC'While (b : bexp) (d : dcom') (Q : Assertion)
+  (* while b do d end {{ Q }} *)
+| DC'Pre (d : dcom')
+  (* ->> d *)
+| DC'Post (d : dcom') (Q : Assertion)
+  (* d ->> {{ Q }} *)
+.
 
-    [] *)
+Inductive decorated' : Type :=
+  | Decorated' : Assertion -> dcom' -> decorated'.
+
+(** To avoid clashing with the existing [Notation] definitions for
+    ordinary [com]mands, we introduce these notations in a custom entry
+    notation called [dcom]. *)
+
+Declare Scope dcom'_scope.
+Notation "'skip' {{ P }}"
+      := (DC'Skip P)
+      (in custom com at level 0, P constr) : dcom'_scope.
+Notation "l ':=' a {{ P }}"
+      := (DC'Asgn l a P)
+      (in custom com at level 0, l constr at level 0,
+          a custom com at level 85, P constr, no associativity) : dcom'_scope.
+Notation "'while' b 'do' d 'end' {{ Ppost }}"
+      := (DC'While b d Ppost)
+           (in custom com at level 89, b custom com at level 99,
+           Ppost constr) : dcom'_scope.
+Notation "'if' b 'then' d 'else' d' 'end' {{ Q }}"
+      := (DC'If b d d' Q)
+           (in custom com at level 89, b custom com at level 99,
+               Q constr) : dcom'_scope.
+Notation "'->>' d"
+      := (DC'Pre d)
+      (in custom com at level 12, right associativity) : dcom'_scope.
+Notation "d '->>' {{ P }}"
+      := (DC'Post d P)
+      (in custom com at level 10, right associativity, P constr) : dcom'_scope.
+Notation " d ; d' "
+      := (DC'Seq d d')
+      (in custom com at level 90, right associativity) : dcom'_scope.
+Notation "{{ P }} d"
+      := (Decorated' P d)
+      (in custom com at level 91, P constr) : dcom'_scope.
+
+Open Scope dcom'_scope.
+
+Fixpoint extract' (d : dcom') : com :=
+  match d with
+  | DC'Skip _           => CSkip
+  | DC'Seq d1 d2        => CSeq (extract' d1) (extract' d2)
+  | DC'Asgn X a _       => CAsgn X a
+  | DC'If b d1 d2 _     => CIf b (extract' d1) (extract' d2)
+  | DC'While b d _      => CWhile b (extract' d)
+  | DC'Pre d            => extract' d
+  | DC'Post d _         => extract' d
+  end.
+
+Fixpoint post' (d : dcom') : Assertion :=
+  match d with
+  | DC'Skip P                => P
+  | DC'Seq _ d2              => post' d2
+  | DC'Asgn _ _ Q            => Q
+  | DC'If  _ _ _ Q           => Q
+  | DC'While _ _ Q           => Q
+  | DC'Pre d                 => post' d
+  | DC'Post _ Q              => Q
+  end.
+
+Fixpoint verification_conditions' (P : Assertion) (d : dcom') : Prop :=
+  match d with
+  | DC'Skip Q =>
+      (P ->> Q)
+  | DC'Seq d1 d2 =>
+      verification_conditions' P d1
+      /\ verification_conditions' (post' d1) d2
+  | DC'Asgn X a Q =>
+      (P ->> Q [X |-> a])
+  | DC'If b d1 d2 Q =>
+      (post' d1 ->> Q) /\ (post' d2 ->> Q)
+      /\ verification_conditions' (P /\ b) d1
+      /\ verification_conditions' (P /\ ~ b) d2
+  | DC'While b d Ppost =>
+      (* post d is the loop invariant and the initial
+          precondition *)
+      (P ->> post' d)
+      /\ ((post' d  /\ ~ b) ->> Ppost)%assertion
+      /\ verification_conditions' (post' d  /\ b) d
+  | DC'Pre d =>
+      verification_conditions' P d
+  | DC'Post d Q =>
+      verification_conditions' P d /\ (post' d ->> Q)
+  end.
+
+(* I think this can be a lot better, but it'd need to be completely restructered *)
+
+Theorem verification_correct' : forall d P,
+  verification_conditions' P d -> {{P}} extract' d {{post' d}}.
+Proof.
+  induction d; intros; simpl in *.
+  - (* Skip *)
+    eapply hoare_consequence_pre.
+      + apply hoare_skip.
+      + assumption.
+  - (* Seq *)
+    destruct H as [H1 H2].
+    eapply hoare_seq; eauto.
+  - (* Asgn *)
+    eapply hoare_consequence_pre.
+      + apply hoare_asgn.
+      + assumption.
+  - (* If *)
+    destruct H as [Hd1 [Hd2 [VF1 VF2]]].
+    apply hoare_if; eapply hoare_consequence_post; eauto.
+  - (* While *)
+    destruct H as [Hpre [Hpost1  Hd] ].
+    eapply hoare_consequence; eauto.
+    apply hoare_while.
+    eapply hoare_consequence_pre; eauto.
+  - (* Pre *)
+    auto.
+  - (* Post *)
+    destruct H as [Hd HQ].
+    eapply hoare_consequence_post; eauto.
+Qed.
+
+(* Let's take it for a spin *)
+
+Definition extract_dec' (dec : decorated') : com :=
+  match dec with
+  | Decorated' P d => extract' d
+  end.
+
+Definition pre_dec' (dec : decorated') : Assertion :=
+  match dec with
+  | Decorated' P d => P
+  end.
+
+Definition post_dec' (dec : decorated') : Assertion :=
+  match dec with
+  | Decorated' P d => post' d
+  end.
+
+Definition dec_correct' (dec : decorated') :=
+  {{pre_dec' dec}} extract_dec' dec {{post_dec' dec}}.
+
+Ltac verify' :=
+  intros;
+  apply verification_correct';
+  verify_assn.
+
+
+(* Test If *)
+Definition if_minus_plus' : decorated' :=
+  <{
+  {{ True }}
+  if X <= Y then
+    Z := Y - X
+      {{ Y = X + Z }}
+  else
+    Y := X + Z
+      {{ Y = X + Z }}
+  end
+    {{ Y = X + Z }} }>.
+
+Theorem if_minus_plus_correct' :
+  dec_correct' if_minus_plus'.
+Proof.
+  verify'.
+Qed.
+
+(* Test While *)
+Definition square_dec'' (m : nat) : decorated' :=
+  <{
+  {{ X = m }}
+  Y := X
+  {{ X = m /\ Y = m }};
+  Z := 0
+  {{ X = m /\ Y = m /\ Z = 0}} ->>
+  {{ Z + X * Y = m * m }};
+  while ~(Y = 0) do
+    Z := Z + X
+    {{ Z + X * (Y - 1) = m * m }};
+    Y := Y - 1
+    {{ Z + X * Y = m * m }}
+  end
+  {{ Z + X * Y = m * m /\ Y = 0 }} ->>
+  {{ Z = m * m }} }>.
+
+Theorem square_dec_correct'' : forall m,
+  dec_correct' (square_dec'' m).
+Proof.
+  verify'.
+  destruct (st Y). contradiction.
+  rewrite sub_1_r. simpl. lia.
+Qed.
 
 (* 2021-08-11 15:11 *)
