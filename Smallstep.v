@@ -177,7 +177,8 @@ Example test_step_1 :
         (C 4)
         (P (C 2) (C 4)).
 Proof.
-  apply ST_Plus1. apply ST_PlusConstConst.  Qed.
+  apply ST_Plus1. apply ST_PlusConstConst.
+Qed.
 
 (** **** Exercise: 1 star, standard (test_step_2)
 
@@ -198,7 +199,8 @@ Example test_step_2 :
           (C 2)
           (C 4)).
 Proof.
-  (* FILL IN HERE *) Admitted.
+  apply ST_Plus2, ST_Plus2, ST_PlusConstConst.
+Qed.
 (** [] *)
 
 End SimpleArith1.
@@ -458,7 +460,16 @@ Inductive step : tm -> tm -> Prop :=
 Theorem step_deterministic :
   deterministic step.
 Proof.
-  (* FILL IN HERE *) Admitted.
+  unfold deterministic. 
+  intros x y1 y2 Hy1 Hy2.
+  generalize dependent y2.
+  induction Hy1; intros y2 Hy2;
+  inversion Hy2 as []; subst;
+  try solve_by_invert;
+  try (erewrite IHHy1; eauto);
+  try (inversion H; subst; solve_by_invert).
+  reflexivity.
+Qed.
 (** [] *)
 
 (* ================================================================= *)
@@ -610,7 +621,12 @@ Inductive step : tm -> tm -> Prop :=
 Lemma value_not_same_as_normal_form :
   exists v, value v /\ ~ normal_form step v.
 Proof.
-  (* FILL IN HERE *) Admitted.
+  exists (P (C 1) (C 1)). split.
+  - apply v_funny.
+  - intro. destruct H.
+    exists (C 2).
+    apply ST_PlusConstConst.
+Qed.
 End Temp1.
 
 (** [] *)
@@ -645,8 +661,12 @@ Inductive step : tm -> tm -> Prop :=
 Lemma value_not_same_as_normal_form :
   exists v, value v /\ ~ normal_form step v.
 Proof.
-  (* FILL IN HERE *) Admitted.
-
+  exists (C 1). split.
+  - apply v_const.
+  - intro. destruct H.
+    exists (P (C 1) (C 0)).
+    apply ST_Funny.
+Qed.
 End Temp2.
 (** [] *)
 
@@ -680,8 +700,14 @@ Inductive step : tm -> tm -> Prop :=
 Lemma value_not_same_as_normal_form :
   exists t, ~ value t /\ normal_form step t.
 Proof.
-  (* FILL IN HERE *) Admitted.
-
+  exists (P (C 1) (P (C 1) (C 1))).
+  split.
+  - intro. inversion H.
+  - unfold normal_form. intro.
+    destruct H as [t Ht]. 
+    inversion Ht; subst.
+    inversion H2.
+Qed.
 End Temp3.
 (** [] *)
 
@@ -725,7 +751,8 @@ Inductive step : tm -> tm -> Prop :=
 Definition bool_step_prop1 :=
   fls --> fls.
 
-(* FILL IN HERE *)
+Example test_bool1 : ~ bool_step_prop1.
+Proof. unfold bool_step_prop1. intro. inversion H. Qed.
 
 Definition bool_step_prop2 :=
      test
@@ -735,7 +762,8 @@ Definition bool_step_prop2 :=
   -->
      tru.
 
-(* FILL IN HERE *)
+Example test_bool2 : ~ bool_step_prop2.
+Proof. unfold bool_step_prop2. intro. inversion H. Qed.
 
 Definition bool_step_prop3 :=
      test
@@ -748,7 +776,8 @@ Definition bool_step_prop3 :=
        (test tru tru tru)
        fls.
 
-(* FILL IN HERE *)
+Example test_bool3 : bool_step_prop3.
+Proof. unfold bool_step_prop3. apply ST_If, ST_IfTrue. Qed.
 
 (* Do not modify the following line: *)
 Definition manual_grade_for_smallstep_bools : option (nat*string) := None.
@@ -762,14 +791,28 @@ Definition manual_grade_for_smallstep_bools : option (nat*string) := None.
 Theorem strong_progress_bool : forall t,
   value t \/ (exists t', t --> t').
 Proof.
-  (* FILL IN HERE *) Admitted.
+  intros. induction t.
+  - left. apply v_tru.
+  - left. apply v_fls.
+  - right. destruct IHt1.
+    + inversion H; eexists; constructor.
+    + destruct H. exists (test x t2 t3). constructor. assumption.
+Qed. 
 (** [] *)
 
 (** **** Exercise: 2 stars, standard, optional (step_deterministic) *)
 Theorem step_deterministic :
   deterministic step.
 Proof.
-  (* FILL IN HERE *) Admitted.
+  unfold deterministic.
+  intros x y1 y2 Hy1 Hy2.
+  generalize dependent y2.
+  induction Hy1; intros;
+  inversion Hy2; subst;
+  try reflexivity;
+  try solve_by_invert.
+  erewrite IHHy1; eauto.
+Qed.
 (** [] *)
 
 Module Temp5.
@@ -805,7 +848,9 @@ Inductive step : tm -> tm -> Prop :=
   | ST_If : forall t1 t1' t2 t3,
       t1 --> t1' ->
       test t1 t2 t3 --> test t1' t2 t3
-  (* FILL IN HERE *)
+  | ST_Short : forall t v,
+      value v ->
+      test t v v --> v
 
   where " t '-->' t' " := (step t t').
 
@@ -820,7 +865,8 @@ Definition bool_step_prop4 :=
 Example bool_step_prop4_holds :
   bool_step_prop4.
 Proof.
-  (* FILL IN HERE *) Admitted.
+  unfold bool_step_prop4. apply ST_Short. constructor.
+Qed.
 (** [] *)
 
 (** **** Exercise: 3 stars, standard, optional (properties_of_altered_step)
@@ -833,14 +879,54 @@ Proof.
     - Is the [step] relation still deterministic?  Write yes or no and
       briefly (1 sentence) explain your answer.
 
+      No, for example:
+        
+        test (test tru tru tru) tru tru
+      
+      This can be derived two different ways:
+        1. ST_If:     test (test tru tru tru) fls fls -> test tru fls fls
+        2. ST_Short:  test (test tru tru tru) fls fls -> fls
+
       Optional: prove your answer correct in Coq. *)
 
-(* FILL IN HERE
-   - Does a strong progress theorem hold? Write yes or no and
-     briefly (1 sentence) explain your answer.
+Theorem alt_step_not_deterministic :
+  ~ deterministic step.
+Proof.
+  unfold deterministic. intro.
+  assert ((test tru fls fls) = fls).
+  - apply H with (test (test tru tru tru) fls fls).
+    + apply ST_If, ST_IfTrue.
+    + apply ST_Short, v_fls.
+  - discriminate.
+Qed.
 
-     Optional: prove your answer correct in Coq.
+(*
+    - Does a strong progress theorem hold? Write yes or no and
+      briefly (1 sentence) explain your answer.
+
+      Yes, all cases are covered by the original rules already.
+      Given that step w/o short circuit is strong, this version
+      is also strong without need of the new derivation.
+
+      We can show this by applying the exact same proof as before,
+      or even better, prove it more explicitly without using the 
+      short ciruit constructor
+
+      Optional: prove your answer correct in Coq.
 *)
+
+Theorem strong_progress_alt : forall t,
+  value t \/ (exists t', t --> t').
+Proof.
+  intros. induction t.
+  - left. apply v_tru.
+  - left. apply v_fls.
+  - right. destruct IHt1.
+    + inversion H; eexists. 
+      * apply ST_IfTrue.
+      * apply ST_IfFalse.
+    + destruct H. exists (test x t2 t3). apply ST_If. assumption.
+Qed.
 
 (* FILL IN HERE
    - In general, is there any way we could cause strong progress to
@@ -848,8 +934,37 @@ Proof.
      step relation? Write yes or no and briefly (1 sentence) explain
      your answer.
 
-(* FILL IN HERE *)
+     Yes. For example, removing the ST_IfTrue constructor means that
+     while (test tru tru fls) is valid, there is no possible derivation,
+     nor is it an instance of a value.
 *)
+
+Reserved Notation " t '!-->' t' " (at level 40).
+
+Inductive step' : tm -> tm -> Prop :=
+  | ST'_IfFalse : forall t1 t2,
+      test fls t1 t2 !--> t2
+  | ST'_If : forall t1 t1' t2 t3,
+      t1 !--> t1' ->
+      test t1 t2 t3 !--> test t1' t2 t3
+  | ST'_Short : forall t v,
+      value v ->
+      test t v v !--> v
+
+  where " t '!-->' t' " := (step' t t').
+
+Theorem not_strong : ~ (forall t,
+  value t \/ (exists t', t !--> t')).
+Proof.
+  intro.
+  specialize H with (test tru tru fls).
+  destruct H as [H | [t' H]].
+  - inversion H.
+  - inversion H; subst.
+    + solve_by_invert.
+    + discriminate.
+Qed.
+
 (* Do not modify the following line: *)
 Definition manual_grade_for_properties_of_altered_step : option (nat*string) := None.
 (** [] *)
@@ -997,7 +1112,8 @@ Qed.
 Lemma test_multistep_2:
   C 3 -->* C 3.
 Proof.
-  (* FILL IN HERE *) Admitted.
+  apply multi_refl.
+Qed.
 (** [] *)
 
 (** **** Exercise: 1 star, standard, optional (test_multistep_3) *)
@@ -1006,7 +1122,8 @@ Lemma test_multistep_3:
    -->*
       P (C 0) (C 3).
 Proof.
-  (* FILL IN HERE *) Admitted.
+  apply multi_refl.
+Qed.
 (** [] *)
 
 (** **** Exercise: 2 stars, standard (test_multistep_4) *)
@@ -1021,7 +1138,13 @@ Lemma test_multistep_4:
         (C 0)
         (C (2 + (0 + 3))).
 Proof.
-  (* FILL IN HERE *) Admitted.
+  eapply multi_step. 
+    { apply ST_Plus2. apply v_const. apply ST_Plus2. 
+      apply v_const. apply ST_PlusConstConst. }
+  eapply multi_step.
+    { apply ST_Plus2. apply v_const. apply ST_PlusConstConst. }
+  apply multi_refl.
+Qed. 
 (** [] *)
 
 (* ================================================================= *)
@@ -1051,7 +1174,16 @@ Proof.
   intros x y1 y2 P1 P2.
   destruct P1 as [P11 P12].
   destruct P2 as [P21 P22].
-  (* FILL IN HERE *) Admitted.
+  generalize dependent y2.
+  induction P11; subst; intros;
+  inversion P21; subst.
+  - reflexivity.
+  - destruct P12. exists y. assumption.
+  - destruct P22. exists y. assumption.
+  - apply IHP11; eauto.
+    assert (y = y0). { eapply step_deterministic; eauto. }
+    subst. assumption.
+Qed.
 (** [] *)
 
 (** Indeed, something stronger is true for this language (though
@@ -1088,7 +1220,12 @@ Lemma multistep_congr_2 : forall t1 t2 t2',
      t2 -->* t2' ->
      P t1 t2 -->* P t1 t2'.
 Proof.
-  (* FILL IN HERE *) Admitted.
+  intros t1 t2 t2' vt1 H. induction H.
+  - apply multi_refl.
+  - eapply multi_step with (P t1 y).
+    + apply ST_Plus2; assumption.
+    + apply IHmulti.
+Qed.  
 (** [] *)
 
 (** With these lemmas in hand, the main proof is a straightforward
