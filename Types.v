@@ -183,7 +183,10 @@ Hint Unfold stuck : core.
 Example some_term_is_stuck :
   exists t, stuck t.
 Proof.
-  (* FILL IN HERE *) Admitted.
+  exists (scc (tru)). split.
+  - intro. inversion H. inversion H0. inversion H2.
+  - intro. inversion H; inversion H0. inversion H2.
+Qed.
 (** [] *)
 
 (** However, although values and normal forms are _not_ the same in
@@ -195,7 +198,14 @@ Proof.
 Lemma value_is_nf : forall t,
   value t -> step_normal_form t.
 Proof.
-  (* FILL IN HERE *) Admitted.
+  intros. intro. destruct H.
+  - inversion H; subst; destruct H0; inversion H0.
+  - induction H; destruct H0. 
+    + inversion H.
+    + inversion H0. 
+      apply IHnvalue.
+      eexists. eassumption.
+Qed.
 
 (** (Hint: You will reach a point in this proof where you need to
     use an induction to reason about a term that is known to be a
@@ -204,18 +214,42 @@ Proof.
     proof goes through in either case, but you will find that one way
     is quite a bit shorter than the other.  For the sake of the
     exercise, try to complete the proof both ways.)
-
-    [] *)
+ *)
 
 (** **** Exercise: 3 stars, standard, optional (step_deterministic)
 
     Use [value_is_nf] to show that the [step] relation is also
     deterministic. *)
+Lemma nvalue_is_normal_form : forall t,
+  nvalue t -> step_normal_form t.
+Proof.
+  intros. assert (value t). 
+  unfold value. right. auto.
+  eapply value_is_nf. auto.
+Qed.
 
 Theorem step_deterministic:
   deterministic step.
 Proof with eauto.
-  (* FILL IN HERE *) Admitted.
+  unfold deterministic. intros.
+  generalize dependent y2.
+  induction H as []; intros;
+  inversion H0 as []; subst; 
+  try auto || solve_by_invert;
+  try (apply IHstep in H1; congruence).
+  - inversion H1; subst. 
+    apply nvalue_is_normal_form in H.
+    destruct H...
+  - inversion H; subst.
+    apply nvalue_is_normal_form in H1.
+    destruct H1...
+  - inversion H1; subst.
+    apply nvalue_is_normal_form in H.
+    destruct H...
+  - inversion H; subst.
+    apply nvalue_is_normal_form in H1.
+    destruct H1...
+Qed.
 (** [] *)
 
 (* ================================================================= *)
@@ -322,7 +356,8 @@ Example scc_hastype_nat__hastype_nat : forall t,
   |- scc t \in Nat ->
   |- t \in Nat.
 Proof.
-  (* FILL IN HERE *) Admitted.
+  intros. inversion H. assumption.
+Qed.
 (** [] *)
 
 (* ----------------------------------------------------------------- *)
@@ -382,7 +417,20 @@ Proof.
     + (* t1 can take a step *)
       destruct H as [t1' H1].
       exists (test t1' t2 t3). auto.
-  (* FILL IN HERE *) Admitted.
+  - destruct IHHT.
+    + apply (nat_canonical t1 HT) in H.
+      left. right. auto.
+    + right. destruct H.
+      eexists. eauto.
+  - right. destruct IHHT.
+    + apply (nat_canonical t1 HT) in H.
+      destruct H; eexists; eauto.
+    + destruct H. eexists. eauto.
+  - right. destruct IHHT.
+    + apply (nat_canonical t1 HT) in H.
+      destruct H; eexists; eauto.
+    + destruct H. eexists. eauto.
+Qed.
 (** [] *)
 
 (** **** Exercise: 3 stars, advanced (finish_progress_informal)
@@ -410,7 +458,7 @@ Proof.
       - If [t1] itself can take a step, then, by [ST_Test], so can
         [t].
 
-    - (* FILL IN HERE *)
+    - 
  *)
 (* Do not modify the following line: *)
 Definition manual_grade_for_finish_progress_informal : option (nat*string) := None.
@@ -447,11 +495,22 @@ Proof.
             cases all at once *)
          try solve_by_invert.
     - (* T_Test *) inversion HE; subst; clear HE.
-      + (* ST_TESTTru *) assumption.
+      + (* ST_TestTru *) assumption.
       + (* ST_TestFls *) assumption.
       + (* ST_Test *) apply T_Test; try assumption.
         apply IHHT1; assumption.
-    (* FILL IN HERE *) Admitted.
+    - (* T_Scc *) inversion HE; subst; clear HE.
+      apply T_Scc, IHHT. assumption.
+    - (* T_Prd *) inversion HE; subst; clear HE.
+      + assumption.
+      + inversion HT. assumption.
+      + apply T_Prd, IHHT. assumption.
+    - (* T_Zro *) inversion HE; subst; clear HE.
+      + apply T_Tru.
+      + apply T_Fls.
+      + apply T_Iszro, IHHT. assumption.
+Qed.
+
 (** [] *)
 
 (** **** Exercise: 3 stars, advanced (finish_preservation_informal)
@@ -502,7 +561,12 @@ Theorem preservation' : forall t t' T,
   t --> t' ->
   |- t' \in T.
 Proof with eauto.
-  (* FILL IN HERE *) Admitted.
+  intros t t' T HT HE.
+  generalize dependent T.
+  induction HE; intros; 
+  inversion HT; subst; clear HT...
+  - inversion H1...
+Qed.
 (** [] *)
 
 (** The preservation theorem is often called _subject reduction_,
@@ -543,9 +607,19 @@ Qed.
     and [|- t' \in T], then [|- t \in T]?  If so, prove it.  If
     not, give a counter-example.  (You do not need to prove your
     counter-example in Coq, but feel free to do so.)
-
-    (* FILL IN HERE *)
 *)
+
+Theorem subject_expansion : 
+  ~ (forall t t' T,
+    t --> t' -> |- t' \in T -> |- t \in T).
+Proof.
+  intro.
+  specialize H with (test tru tru zro) tru Bool.
+  assert (test tru tru zro --> tru). auto.
+  apply H in H0. inversion H0. solve_by_invert.
+  auto.
+Qed.  
+
 (* Do not modify the following line: *)
 Definition manual_grade_for_subject_expansion : option (nat*string) := None.
 (** [] *)
@@ -563,16 +637,19 @@ Definition manual_grade_for_subject_expansion : option (nat*string) := None.
    else "becomes false." If a property becomes false, give a
    counterexample.
       - Determinism of [step]
-            (* FILL IN HERE *)
+            remains true
       - Progress
-            (* FILL IN HERE *)
+            becomes false: 
+              test (scc true) zro zro \in Nat
+              /\ ~ value (test (scc true) zro zro)
+              /\ ~ exists t', test (scc true) zro zro --> t'
       - Preservation
-            (* FILL IN HERE *)
+            remains true
 *)
 (* Do not modify the following line: *)
 Definition manual_grade_for_variation1 : option (nat*string) := None.
 (** [] *)
-
+ST_TEST
 (** **** Exercise: 2 stars, standard (variation2)
 
     Suppose, instead, that we add this new rule to the [step] relation:
@@ -582,7 +659,14 @@ Definition manual_grade_for_variation1 : option (nat*string) := None.
 
    Which of the above properties become false in the presence of
    this rule?  For each one that does, give a counter-example.
-            (* FILL IN HERE *)
+      - Determinism of [step]
+            becomes false: 
+              (test tru t2 t3) --> t3 (by ST_Funny1)
+              (test tru t2 t3) --> t2 (by ST_TestTru)
+      - Progress
+            remains true
+      - Preservation
+            remains true
 *)
 (* Do not modify the following line: *)
 Definition manual_grade_for_variation2 : option (nat*string) := None.
@@ -598,7 +682,15 @@ Definition manual_grade_for_variation2 : option (nat*string) := None.
 
    Which of the above properties become false in the presence of
    this rule?  For each one that does, give a counter-example.
-            (* FILL IN HERE *)
+      - Determinism of [step]
+            remains true
+      - Progress
+            becomes false
+              prd (zro) -> zro ->
+              (test fls (prd zro) zro) --> (test fls zro zro)
+              ST_TestFls => zro --> zro 
+      - Preservation
+            remains true
 *)
 (** [] *)
 
