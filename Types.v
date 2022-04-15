@@ -649,7 +649,7 @@ Definition manual_grade_for_subject_expansion : option (nat*string) := None.
 (* Do not modify the following line: *)
 Definition manual_grade_for_variation1 : option (nat*string) := None.
 (** [] *)
-ST_TEST
+
 (** **** Exercise: 2 stars, standard (variation2)
 
     Suppose, instead, that we add this new rule to the [step] relation:
