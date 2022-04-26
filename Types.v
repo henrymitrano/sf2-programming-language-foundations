@@ -685,10 +685,7 @@ Definition manual_grade_for_variation2 : option (nat*string) := None.
       - Determinism of [step]
             remains true
       - Progress
-            becomes false
-              prd (zro) -> zro ->
-              (test fls (prd zro) zro) --> (test fls zro zro)
-              ST_TestFls => zro --> zro 
+            remains true
       - Preservation
             remains true
 *)
